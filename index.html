@@ -11,6 +11,8 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/html2canvas.min.js"></script>
 <style>
   :root{
     --bg:#f5f3ff;
@@ -187,10 +189,9 @@
     <h2>Експорт для лікаря</h2>
     <div class="btn-row">
       <button class="btn btn-secondary" id="export-csv-btn">⬇️ CSV (Excel)</button>
-      <button class="btn btn-secondary" id="export-pdf-btn">🖨️ PDF / Друк</button>
+      <button class="btn btn-secondary" id="export-pdf-btn">📄 PDF</button>
     </div>
-    <button class="btn btn-secondary" id="share-btn" style="margin-top:10px;">📤 Поділитися файлом</button>
-    <p class="hint">CSV відкривається в Excel/Numbers. PDF — через друк (на iPhone: «Поділитися» → «Друк» → збільшити прев'ю → зберегти як PDF).</p>
+    <p class="hint" id="export-hint">На телефоні файл або одразу відкриє меню «Поділитися» (щоб надіслати лікарю), або завантажиться — тоді знайдіть його в застосунку «Файли».</p>
   </section>
 
   <section class="card">
@@ -408,27 +409,121 @@ function downloadFile(filename, content, mime){
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
 }
 
-document.getElementById("export-csv-btn").onclick = ()=>{
-  const csv = buildCsv();
-  downloadFile(`щоденник_${nowDate()}.csv`, csv, "text/csv;charset=utf-8");
-};
-
-document.getElementById("export-pdf-btn").onclick = ()=>{
-  window.print();
-};
-
-document.getElementById("share-btn").onclick = async ()=>{
-  const csv = buildCsv();
-  const file = new File([new Blob(["\uFEFF"+csv.replace(/^\uFEFF/,'')],{type:"text/csv"})], `щоденник_${nowDate()}.csv`, {type:"text/csv"});
+// Shares a File via the native Share sheet when possible; otherwise falls back
+// to a plain download (works both in Safari and in installed home-screen apps).
+async function shareOrDownload(file, fallbackContent, fallbackMime){
   if(navigator.canShare && navigator.canShare({files:[file]})){
     try{
-      await navigator.share({files:[file], title:"Щоденник думок, емоцій та поведінки"});
-    }catch(e){ /* user cancelled */ }
-  } else {
-    showToast("Поділитися файлом не підтримується — використайте CSV-експорт");
-    downloadFile(`щоденник_${nowDate()}.csv`, csv, "text/csv;charset=utf-8");
+      await navigator.share({files:[file]});
+      return;
+    }catch(e){
+      if(e && e.name === "AbortError") return; // user cancelled — not an error
+      // fall through to download on any other failure
+    }
+  }
+  downloadFile(file.name, fallbackContent, fallbackMime);
+  showToast("Файл завантажено — знайдіть його в застосунку «Файли»");
+}
+
+document.getElementById("export-csv-btn").onclick = ()=>{
+  const csv = buildCsv();
+  const file = new File([csv], `щоденник_${nowDate()}.csv`, {type:"text/csv"});
+  shareOrDownload(file, csv, "text/csv;charset=utf-8");
+};
+
+document.getElementById("export-pdf-btn").onclick = async ()=>{
+  const entries = loadEntries();
+  if(entries.length === 0){
+    showToast("Немає записів для експорту");
+    return;
+  }
+  const btn = document.getElementById("export-pdf-btn");
+  const oldText = btn.textContent;
+  btn.textContent = "Готуємо…";
+  btn.disabled = true;
+  try{
+    const blob = await buildPdfBlob(entries);
+    const file = new File([blob], `щоденник_${nowDate()}.pdf`, {type:"application/pdf"});
+    await shareOrDownload(file, blob, "application/pdf");
+  }catch(err){
+    console.error(err);
+    showToast("Не вдалося створити PDF");
+  }finally{
+    btn.textContent = oldText;
+    btn.disabled = false;
   }
 };
+
+// Renders all entries into an offscreen HTML block, rasterizes it with
+// html2canvas (so Cyrillic renders correctly with zero font embedding),
+// then slices the resulting image across A4 pages with jsPDF.
+async function buildPdfBlob(entries){
+  const sorted = [...entries].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+
+  const wrap = document.createElement("div");
+  wrap.style.position = "fixed";
+  wrap.style.left = "-9999px";
+  wrap.style.top = "0";
+  wrap.style.width = "760px";
+  wrap.style.background = "#ffffff";
+  wrap.style.color = "#1f2937";
+  wrap.style.fontFamily = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+  wrap.style.padding = "24px";
+
+  let html = `<h1 style="font-size:20px;margin:0 0 4px;color:#1f2937;">Щоденник думок, емоцій та поведінки</h1>
+    <p style="font-size:12px;color:#6b7280;margin:0 0 18px;">Експортовано: ${nowDate()} ${nowTime()} · Записів: ${sorted.length}</p>`;
+
+  sorted.forEach(e=>{
+    html += `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">
+        <b style="color:#1f2937;">${escapeHtml(e.date)} ${escapeHtml(e.time)}</b> &nbsp;·&nbsp; Інтенсивність: ${escapeHtml(String(e.intensity))}/10
+      </div>
+      ${e.trigger ? row("Ситуація", e.trigger) : ""}
+      ${e.thoughts ? row("Думки", e.thoughts) : ""}
+      ${e.emotions.length ? row("Емоції", e.emotions.join(", ")) : ""}
+      ${e.physio ? row("Фізіологія", e.physio) : ""}
+      ${e.behavior ? row("Поведінка", e.behavior) : ""}
+    </div>`;
+  });
+
+  function row(label, value){
+    return `<div style="font-size:13px;margin:3px 0;line-height:1.4;"><b style="color:#4338ca;">${label}:</b> ${escapeHtml(value)}</div>`;
+  }
+
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap);
+
+  let canvas;
+  try{
+    canvas = await html2canvas(wrap, {scale:2, backgroundColor:"#ffffff", useCORS:false});
+  }finally{
+    document.body.removeChild(wrap);
+  }
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF("p", "mm", "a4");
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 8;
+  const imgWidth = pageWidth - margin*2;
+  const imgHeight = canvas.height * imgWidth / canvas.width;
+  const imgData = canvas.toDataURL("image/jpeg", 0.92);
+
+  let heightLeft = imgHeight;
+  let position = margin;
+
+  pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
+  heightLeft -= (pageHeight - margin*2);
+
+  while(heightLeft > 0){
+    position = margin - (imgHeight - heightLeft);
+    pdf.addPage();
+    pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
+    heightLeft -= (pageHeight - margin*2);
+  }
+
+  return pdf.output("blob");
+}
 
 // --- init ---
 resetForm();

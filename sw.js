@@ -1,10 +1,12 @@
-const CACHE_NAME = "mood-diary-v1";
+const CACHE_NAME = "mood-diary-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "./vendor/jspdf.umd.min.js",
+  "./vendor/html2canvas.min.js"
 ];
 
 self.addEventListener("install", (event) => {
