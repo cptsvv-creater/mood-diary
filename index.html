@@ -198,6 +198,11 @@
     <h2>Записи (<span id="entry-count">0</span>)</h2>
     <div id="entries-list"></div>
   </section>
+
+  <p class="hint no-print" style="text-align:center;margin:4px 0 20px;">
+    Версія застосунку: 2026-09-17-1 ·
+    <a href="#" id="force-update-link" style="color:var(--accent-dark);">оновити примусово</a>
+  </p>
 </main>
 
 <div id="toast"></div>
@@ -525,13 +530,34 @@ async function buildPdfBlob(entries){
   return pdf.output("blob");
 }
 
+document.getElementById("force-update-link").addEventListener("click", async (e)=>{
+  e.preventDefault();
+  try{
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k=>caches.delete(k)));
+    if("serviceWorker" in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+  }catch(err){ /* ignore */ }
+  window.location.reload(true);
+});
+
 // --- init ---
 resetForm();
 renderEntries();
 
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
-    navigator.serviceWorker.register("sw.js").catch(()=>{});
+    navigator.serviceWorker.register("sw.js", {updateViaCache:"none"}).then(reg=>{
+      reg.update().catch(()=>{});
+    }).catch(()=>{});
+  });
+  let refreshedOnce = false;
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    if(refreshedOnce) return;
+    refreshedOnce = true;
+    window.location.reload();
   });
 }
 </script>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "mood-diary-v2";
+const CACHE_NAME = "mood-diary-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,23 +27,21 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first: always try to fetch the freshest version from GitHub Pages.
+// Only fall back to the cached copy when there is no network (offline use at sea).
+// This prevents the installed home-screen app from getting stuck on an old version.
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          if (
-            event.request.method === "GET" &&
-            response.status === 200 &&
-            response.type === "basic"
-          ) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-    })
+    fetch(event.request, {cache: "no-store"})
+      .then((response) => {
+        if (response.status === 200 && response.type === "basic") {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
+
