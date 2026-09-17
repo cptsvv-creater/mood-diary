@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Щоденник думок, емоцій та поведінки</title>
+<meta name="theme-color" content="#4f46e5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Щоденник">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<script src="jspdf.umd.min.js"></script>
+<script src="html2canvas.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f3ff;
+    --card:#ffffff;
+    --ink:#1f2937;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --accent:#4f46e5;
+    --accent-dark:#4338ca;
+    --accent-soft:#eef2ff;
+    --danger:#dc2626;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  header{
+    background:linear-gradient(135deg,var(--accent),#7c3aed);
+    color:#fff;
+    padding:20px 16px calc(16px + env(safe-area-inset-top)/4);
+    padding-top:calc(20px + env(safe-area-inset-top));
+    position:sticky;
+    top:0;
+    z-index:10;
+  }
+  header h1{margin:0;font-size:19px;font-weight:700;}
+  header p{margin:4px 0 0;font-size:13px;opacity:.9;}
+  main{max-width:640px;margin:0 auto;padding:16px;}
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:16px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    border:1px solid var(--border);
+  }
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--accent-dark);}
+  label{
+    display:block;
+    font-size:13px;
+    font-weight:600;
+    color:var(--muted);
+    margin:14px 0 6px;
+  }
+  label:first-of-type{margin-top:0;}
+  input[type=date], input[type=time], textarea, input[type=text]{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    font-size:15px;
+    font-family:inherit;
+    background:#fafafa;
+    color:var(--ink);
+  }
+  textarea{resize:vertical;min-height:56px;line-height:1.4;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .chip{
+    padding:6px 12px;
+    border-radius:20px;
+    border:1px solid var(--border);
+    background:#fafafa;
+    font-size:13px;
+    cursor:pointer;
+    color:var(--ink);
+    user-select:none;
+  }
+  .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .slider-row{display:flex;align-items:center;gap:10px;margin-top:8px;}
+  input[type=range]{flex:1;}
+  .slider-val{
+    min-width:32px;text-align:center;font-weight:700;color:var(--accent-dark);
+    background:var(--accent-soft);border-radius:8px;padding:2px 6px;font-size:13px;
+  }
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:12px 16px;border-radius:10px;border:none;
+    font-size:15px;font-weight:600;cursor:pointer;
+    width:100%;
+  }
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:active{background:var(--accent-dark);}
+  .btn-secondary{background:var(--accent-soft);color:var(--accent-dark);}
+  .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  .btn-row .btn{margin-top:0;}
+  .entry{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:12px;
+    margin-bottom:10px;
+    background:#fafaff;
+  }
+  .entry-head{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    font-size:13px;color:var(--muted);margin-bottom:6px;
+  }
+  .entry-head b{color:var(--ink);}
+  .entry-field{font-size:14px;margin:4px 0;}
+  .entry-field b{color:var(--accent-dark);font-weight:600;}
+  .entry-actions{display:flex;gap:8px;margin-top:8px;}
+  .entry-actions button{
+    flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);
+    background:#fff;font-size:13px;cursor:pointer;
+  }
+  .entry-actions .del{color:var(--danger);border-color:#fecaca;}
+  .empty{text-align:center;color:var(--muted);font-size:14px;padding:24px 0;}
+  #toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#1f2937;color:#fff;padding:10px 18px;border-radius:20px;
+    font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;
+  }
+  #toast.show{opacity:1;}
+  @media print{
+    header, .card.form-card, #toast, .no-print{display:none !important;}
+    body{background:#fff;}
+    .entry{page-break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📓 Щоденник думок, емоцій та поведінки</h1>
+  <p>Тригерна ситуація → думки → емоції → поведінка</p>
+</header>
+
+<main>
+  <section class="card form-card">
+    <h2 id="form-title">Новий запис</h2>
+    <div class="row2">
+      <div>
+        <label for="f-date">Дата</label>
+        <input type="date" id="f-date">
+      </div>
+      <div>
+        <label for="f-time">Час</label>
+        <input type="time" id="f-time">
+      </div>
+    </div>
+
+    <label for="f-trigger">Тригерна ситуація</label>
+    <textarea id="f-trigger" placeholder="Що сталося? Де, з ким, за яких обставин?"></textarea>
+
+    <label for="f-thoughts">Думки</label>
+    <textarea id="f-thoughts" placeholder='Наприклад: "Вони, мабуть, думають, що я не такий"'></textarea>
+
+    <label>Емоції (можна вибрати кілька або дописати свої)</label>
+    <div class="chips" id="emotion-chips"></div>
+    <input type="text" id="f-emotions-custom" placeholder="Інші емоції (через кому)" style="margin-top:8px;">
+    <div class="slider-row">
+      <span class="hint" style="min-width:110px;">Інтенсивність</span>
+      <input type="range" id="f-intensity" min="0" max="10" value="5">
+      <span class="slider-val" id="f-intensity-val">5</span>
+    </div>
+
+    <label for="f-physio">Фізіологічна реакція</label>
+    <textarea id="f-physio" placeholder="Наприклад: серцебиття, напруга в тілі, почервоніння"></textarea>
+
+    <label for="f-behavior">Поведінка</label>
+    <textarea id="f-behavior" placeholder="Наприклад: уникнення ситуацій"></textarea>
+
+    <button class="btn btn-primary" id="save-btn" style="margin-top:16px;">Зберегти запис</button>
+    <button class="btn btn-secondary no-print" id="cancel-edit-btn" style="margin-top:8px;display:none;">Скасувати редагування</button>
+  </section>
+
+  <section class="card no-print">
+    <h2>Експорт для лікаря</h2>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="export-csv-btn">⬇️ CSV (Excel)</button>
+      <button class="btn btn-secondary" id="export-pdf-btn">📄 PDF</button>
+    </div>
+    <p class="hint" id="export-hint">На телефоні файл або одразу відкриє меню «Поділитися» (щоб надіслати лікарю), або завантажиться — тоді знайдіть його в застосунку «Файли».</p>
+  </section>
+
+  <section class="card">
+    <h2>Записи (<span id="entry-count">0</span>)</h2>
+    <div id="entries-list"></div>
+  </section>
+
+  <p class="hint no-print" style="text-align:center;margin:4px 0 20px;">
+    Версія застосунку: 2026-09-17-2 ·
+    <a href="#" id="force-update-link" style="color:var(--accent-dark);">оновити примусово</a>
+  </p>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const STORAGE_KEY = "mood_diary_entries_v1";
+const EMOTION_PRESETS = ["Тривога","Гнів","Сором","Огида","Страх","Сум","Провина","Розчарування"];
+let editingId = null;
+
+function pad(n){return n.toString().padStart(2,"0");}
+function nowDate(){const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
+function nowTime(){const d=new Date();return `${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+
+function loadEntries(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){return [];}
+}
+function saveEntries(entries){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+// --- emotion chips ---
+const chipsWrap = document.getElementById("emotion-chips");
+let selectedEmotions = new Set();
+EMOTION_PRESETS.forEach(em=>{
+  const c = document.createElement("div");
+  c.className = "chip";
+  c.textContent = em;
+  c.onclick = ()=>{
+    if(selectedEmotions.has(em)){selectedEmotions.delete(em); c.classList.remove("active");}
+    else {selectedEmotions.add(em); c.classList.add("active");}
+  };
+  chipsWrap.appendChild(c);
+});
+
+document.getElementById("f-intensity").addEventListener("input", (e)=>{
+  document.getElementById("f-intensity-val").textContent = e.target.value;
+});
+
+function resetForm(){
+  document.getElementById("f-date").value = nowDate();
+  document.getElementById("f-time").value = nowTime();
+  document.getElementById("f-trigger").value = "";
+  document.getElementById("f-thoughts").value = "";
+  document.getElementById("f-emotions-custom").value = "";
+  document.getElementById("f-intensity").value = 5;
+  document.getElementById("f-intensity-val").textContent = 5;
+  document.getElementById("f-physio").value = "";
+  document.getElementById("f-behavior").value = "";
+  selectedEmotions.clear();
+  chipsWrap.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
+  editingId = null;
+  document.getElementById("form-title").textContent = "Новий запис";
+  document.getElementById("save-btn").textContent = "Зберегти запис";
+  document.getElementById("cancel-edit-btn").style.display = "none";
+}
+
+function fillFormForEdit(entry){
+  document.getElementById("f-date").value = entry.date;
+  document.getElementById("f-time").value = entry.time;
+  document.getElementById("f-trigger").value = entry.trigger;
+  document.getElementById("f-thoughts").value = entry.thoughts;
+  document.getElementById("f-physio").value = entry.physio;
+  document.getElementById("f-behavior").value = entry.behavior;
+  document.getElementById("f-intensity").value = entry.intensity;
+  document.getElementById("f-intensity-val").textContent = entry.intensity;
+  selectedEmotions.clear();
+  const presetSelected = [];
+  const customList = [];
+  entry.emotions.forEach(em=>{
+    if(EMOTION_PRESETS.includes(em)) presetSelected.push(em);
+    else customList.push(em);
+  });
+  chipsWrap.querySelectorAll(".chip").forEach(c=>{
+    if(presetSelected.includes(c.textContent)){c.classList.add("active"); selectedEmotions.add(c.textContent);}
+    else c.classList.remove("active");
+  });
+  document.getElementById("f-emotions-custom").value = customList.join(", ");
+  editingId = entry.id;
+  document.getElementById("form-title").textContent = "Редагування запису";
+  document.getElementById("save-btn").textContent = "Оновити запис";
+  document.getElementById("cancel-edit-btn").style.display = "block";
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+document.getElementById("cancel-edit-btn").onclick = resetForm;
+
+document.getElementById("save-btn").onclick = ()=>{
+  const date = document.getElementById("f-date").value || nowDate();
+  const time = document.getElementById("f-time").value || nowTime();
+  const trigger = document.getElementById("f-trigger").value.trim();
+  const thoughts = document.getElementById("f-thoughts").value.trim();
+  const physio = document.getElementById("f-physio").value.trim();
+  const behavior = document.getElementById("f-behavior").value.trim();
+  const intensity = document.getElementById("f-intensity").value;
+  const customEm = document.getElementById("f-emotions-custom").value
+    .split(",").map(s=>s.trim()).filter(Boolean);
+  const emotions = [...selectedEmotions, ...customEm];
+
+  if(!trigger && !thoughts && !behavior){
+    showToast("Заповніть хоча б ситуацію, думки або поведінку");
+    return;
+  }
+
+  let entries = loadEntries();
+  if(editingId){
+    entries = entries.map(e=> e.id===editingId ? {...e, date,time,trigger,thoughts,emotions,intensity,physio,behavior} : e);
+    showToast("Запис оновлено");
+  } else {
+    entries.push({
+      id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      date,time,trigger,thoughts,emotions,intensity,physio,behavior
+    });
+    showToast("Запис збережено");
+  }
+  saveEntries(entries);
+  resetForm();
+  renderEntries();
+};
+
+function renderEntries(){
+  const entries = loadEntries().sort((a,b)=>{
+    const da = a.date+" "+a.time, db = b.date+" "+b.time;
+    return db.localeCompare(da);
+  });
+  document.getElementById("entry-count").textContent = entries.length;
+  const list = document.getElementById("entries-list");
+  list.innerHTML = "";
+  if(entries.length===0){
+    list.innerHTML = '<div class="empty">Записів ще немає</div>';
+    return;
+  }
+  entries.forEach(entry=>{
+    const div = document.createElement("div");
+    div.className = "entry";
+    div.innerHTML = `
+      <div class="entry-head">
+        <b>${entry.date} ${entry.time}</b>
+        <span>Інтенсивність: ${entry.intensity}/10</span>
+      </div>
+      ${entry.trigger ? `<div class="entry-field"><b>Ситуація:</b> ${escapeHtml(entry.trigger)}</div>` : ""}
+      ${entry.thoughts ? `<div class="entry-field"><b>Думки:</b> ${escapeHtml(entry.thoughts)}</div>` : ""}
+      ${entry.emotions.length ? `<div class="entry-field"><b>Емоції:</b> ${escapeHtml(entry.emotions.join(", "))}</div>` : ""}
+      ${entry.physio ? `<div class="entry-field"><b>Фізіологія:</b> ${escapeHtml(entry.physio)}</div>` : ""}
+      ${entry.behavior ? `<div class="entry-field"><b>Поведінка:</b> ${escapeHtml(entry.behavior)}</div>` : ""}
+      <div class="entry-actions no-print">
+        <button class="edit" data-id="${entry.id}">✏️ Редагувати</button>
+        <button class="del" data-id="${entry.id}">🗑️ Видалити</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+  list.querySelectorAll(".edit").forEach(btn=>{
+    btn.onclick = ()=>{
+      const entries = loadEntries();
+      const entry = entries.find(e=>e.id===btn.dataset.id);
+      if(entry) fillFormForEdit(entry);
+    };
+  });
+  list.querySelectorAll(".del").forEach(btn=>{
+    btn.onclick = ()=>{
+      if(!confirm("Видалити цей запис?")) return;
+      let entries = loadEntries();
+      entries = entries.filter(e=>e.id!==btn.dataset.id);
+      saveEntries(entries);
+      renderEntries();
+      showToast("Запис видалено");
+    };
+  });
+}
+
+function escapeHtml(str){
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// --- export ---
+function buildCsv(){
+  const entries = loadEntries().sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
+  const headers = ["Дата","Час","Тригерна ситуація","Думки","Емоції","Інтенсивність","Фізіологічна реакція","Поведінка"];
+  const rows = [headers];
+  entries.forEach(e=>{
+    rows.push([e.date,e.time,e.trigger,e.thoughts,e.emotions.join("; "),e.intensity,e.physio,e.behavior]);
+  });
+  const csv = rows.map(r=>r.map(cell=>{
+    const s = (cell===undefined||cell===null) ? "" : String(cell);
+    return '"' + s.replace(/"/g,'""') + '"';
+  }).join(",")).join("\r\n");
+  return "\uFEFF" + csv; // BOM for correct Cyrillic in Excel
+}
+
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+// Shares a File via the native Share sheet when possible; otherwise falls back
+// to a plain download (works both in Safari and in installed home-screen apps).
+async function shareOrDownload(file, fallbackContent, fallbackMime){
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file]});
+      return;
+    }catch(e){
+      if(e && e.name === "AbortError") return; // user cancelled — not an error
+      // fall through to download on any other failure
+    }
+  }
+  downloadFile(file.name, fallbackContent, fallbackMime);
+  showToast("Файл завантажено — знайдіть його в застосунку «Файли»");
+}
+
+document.getElementById("export-csv-btn").onclick = ()=>{
+  const csv = buildCsv();
+  const file = new File([csv], `щоденник_${nowDate()}.csv`, {type:"text/csv"});
+  shareOrDownload(file, csv, "text/csv;charset=utf-8");
+};
+
+document.getElementById("export-pdf-btn").onclick = async ()=>{
+  const entries = loadEntries();
+  if(entries.length === 0){
+    showToast("Немає записів для експорту");
+    return;
+  }
+  const btn = document.getElementById("export-pdf-btn");
+  const oldText = btn.textContent;
+  btn.textContent = "Готуємо…";
+  btn.disabled = true;
+  try{
+    const blob = await buildPdfBlob(entries);
+    const file = new File([blob], `щоденник_${nowDate()}.pdf`, {type:"application/pdf"});
+    await shareOrDownload(file, blob, "application/pdf");
+  }catch(err){
+    console.error(err);
+    showToast("Не вдалося створити PDF");
+  }finally{
+    btn.textContent = oldText;
+    btn.disabled = false;
+  }
+};
+
+// Renders all entries into an offscreen HTML block, rasterizes it with
+// html2canvas (so Cyrillic renders correctly with zero font embedding),
+// then slices the resulting image across A4 pages with jsPDF.
+async function buildPdfBlob(entries){
+  const sorted = [...entries].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+
+  const wrap = document.createElement("div");
+  wrap.style.position = "fixed";
+  wrap.style.left = "-9999px";
+  wrap.style.top = "0";
+  wrap.style.width = "760px";
+  wrap.style.background = "#ffffff";
+  wrap.style.color = "#1f2937";
+  wrap.style.fontFamily = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+  wrap.style.padding = "24px";
+
+  let html = `<h1 style="font-size:20px;margin:0 0 4px;color:#1f2937;">Щоденник думок, емоцій та поведінки</h1>
+    <p style="font-size:12px;color:#6b7280;margin:0 0 18px;">Експортовано: ${nowDate()} ${nowTime()} · Записів: ${sorted.length}</p>`;
+
+  sorted.forEach(e=>{
+    html += `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">
+        <b style="color:#1f2937;">${escapeHtml(e.date)} ${escapeHtml(e.time)}</b> &nbsp;·&nbsp; Інтенсивність: ${escapeHtml(String(e.intensity))}/10
+      </div>
+      ${e.trigger ? row("Ситуація", e.trigger) : ""}
+      ${e.thoughts ? row("Думки", e.thoughts) : ""}
+      ${e.emotions.length ? row("Емоції", e.emotions.join(", ")) : ""}
+      ${e.physio ? row("Фізіологія", e.physio) : ""}
+      ${e.behavior ? row("Поведінка", e.behavior) : ""}
+    </div>`;
+  });
+
+  function row(label, value){
+    return `<div style="font-size:13px;margin:3px 0;line-height:1.4;"><b style="color:#4338ca;">${label}:</b> ${escapeHtml(value)}</div>`;
+  }
+
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap);
+
+  let canvas;
+  try{
+    canvas = await html2canvas(wrap, {scale:2, backgroundColor:"#ffffff", useCORS:false});
+  }finally{
+    document.body.removeChild(wrap);
+  }
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF("p", "mm", "a4");
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 8;
+  const imgWidth = pageWidth - margin*2;
+  const imgHeight = canvas.height * imgWidth / canvas.width;
+  const imgData = canvas.toDataURL("image/jpeg", 0.92);
+
+  let heightLeft = imgHeight;
+  let position = margin;
+
+  pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
+  heightLeft -= (pageHeight - margin*2);
+
+  while(heightLeft > 0){
+    position = margin - (imgHeight - heightLeft);
+    pdf.addPage();
+    pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
+    heightLeft -= (pageHeight - margin*2);
+  }
+
+  return pdf.output("blob");
+}
+
+document.getElementById("force-update-link").addEventListener("click", async (e)=>{
+  e.preventDefault();
+  try{
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k=>caches.delete(k)));
+    if("serviceWorker" in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+  }catch(err){ /* ignore */ }
+  window.location.reload(true);
+});
+
+// --- init ---
+resetForm();
+renderEntries();
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("sw.js", {updateViaCache:"none"}).then(reg=>{
+      reg.update().catch(()=>{});
+    }).catch(()=>{});
+  });
+  let refreshedOnce = false;
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    if(refreshedOnce) return;
+    refreshedOnce = true;
+    window.location.reload();
+  });
+}
+</script>
+</body>
+</html>
