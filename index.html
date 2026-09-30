@@ -187,7 +187,27 @@
 
   <section class="card no-print">
     <h2>Експорт для лікаря</h2>
-    <div class="btn-row">
+
+    <label style="margin-top:0;">Період</label>
+    <div class="chips" id="period-presets">
+      <div class="chip" data-preset="all">Усі записи</div>
+      <div class="chip" data-preset="7">Останній тиждень</div>
+      <div class="chip" data-preset="30">Останній місяць</div>
+      <div class="chip" data-preset="custom">Свій період</div>
+    </div>
+    <div class="row2" id="period-range" style="margin-top:10px;display:none;">
+      <div>
+        <label style="margin-top:0;">З</label>
+        <input type="date" id="f-period-from">
+      </div>
+      <div>
+        <label style="margin-top:0;">По</label>
+        <input type="date" id="f-period-to">
+      </div>
+    </div>
+    <p class="hint" id="period-summary" style="margin-top:8px;"></p>
+
+    <div class="btn-row" style="margin-top:14px;">
       <button class="btn btn-secondary" id="export-csv-btn">⬇️ CSV (Excel)</button>
       <button class="btn btn-secondary" id="export-pdf-btn">📄 PDF</button>
     </div>
@@ -200,7 +220,7 @@
   </section>
 
   <p class="hint no-print" style="text-align:center;margin:4px 0 20px;">
-    Версія застосунку: 2026-09-17-2 ·
+    Версія застосунку: 2026-09-30-1 ·
     <a href="#" id="force-update-link" style="color:var(--accent-dark);">оновити примусово</a>
   </p>
 </main>
@@ -337,6 +357,7 @@ function renderEntries(){
     return db.localeCompare(da);
   });
   document.getElementById("entry-count").textContent = entries.length;
+  if(typeof updatePeriodSummary === "function") updatePeriodSummary();
   const list = document.getElementById("entries-list");
   list.innerHTML = "";
   if(entries.length===0){
@@ -388,9 +409,70 @@ function escapeHtml(str){
   return d.innerHTML;
 }
 
+// --- period selection ---
+let currentPreset = "all"; // "all" | "7" | "30" | "custom"
+
+function periodChipsInit(){
+  const wrap = document.getElementById("period-presets");
+  const rangeBox = document.getElementById("period-range");
+  const fromInput = document.getElementById("f-period-from");
+  const toInput = document.getElementById("f-period-to");
+
+  wrap.querySelectorAll(".chip").forEach(chip=>{
+    chip.onclick = ()=>{
+      wrap.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
+      chip.classList.add("active");
+      currentPreset = chip.dataset.preset;
+      rangeBox.style.display = currentPreset === "custom" ? "grid" : "none";
+      if(currentPreset === "custom" && !fromInput.value){
+        // default custom range to the last 30 days so it's not empty
+        const to = new Date();
+        const from = new Date(); from.setDate(from.getDate()-30);
+        fromInput.value = `${from.getFullYear()}-${pad(from.getMonth()+1)}-${pad(from.getDate())}`;
+        toInput.value = nowDate();
+      }
+      updatePeriodSummary();
+    };
+  });
+  fromInput.addEventListener("change", updatePeriodSummary);
+  toInput.addEventListener("change", updatePeriodSummary);
+  wrap.querySelector('[data-preset="all"]').classList.add("active");
+}
+
+function getPeriodRange(){
+  const today = nowDate();
+  if(currentPreset === "all") return {from:null, to:null};
+  if(currentPreset === "7" || currentPreset === "30"){
+    const days = parseInt(currentPreset,10);
+    const from = new Date(); from.setDate(from.getDate()-(days-1));
+    return {from: `${from.getFullYear()}-${pad(from.getMonth()+1)}-${pad(from.getDate())}`, to: today};
+  }
+  // custom
+  const from = document.getElementById("f-period-from").value || null;
+  const to = document.getElementById("f-period-to").value || null;
+  return {from, to};
+}
+
+function getFilteredEntries(){
+  const {from, to} = getPeriodRange();
+  return loadEntries().filter(e=>{
+    if(from && e.date < from) return false;
+    if(to && e.date > to) return false;
+    return true;
+  });
+}
+
+function updatePeriodSummary(){
+  const count = getFilteredEntries().length;
+  const el = document.getElementById("period-summary");
+  el.textContent = count === 0
+    ? "У вибраному періоді записів немає"
+    : `Буде експортовано записів: ${count}`;
+}
+
 // --- export ---
-function buildCsv(){
-  const entries = loadEntries().sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
+function buildCsv(entries){
+  entries = [...entries].sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
   const headers = ["Дата","Час","Тригерна ситуація","Думки","Емоції","Інтенсивність","Фізіологічна реакція","Поведінка"];
   const rows = [headers];
   entries.forEach(e=>{
@@ -430,16 +512,27 @@ async function shareOrDownload(file, fallbackContent, fallbackMime){
   showToast("Файл завантажено — знайдіть його в застосунку «Файли»");
 }
 
+function periodSuffix(){
+  const {from, to} = getPeriodRange();
+  if(!from && !to) return "";
+  return `_${from||"…"}_${to||"…"}`;
+}
+
 document.getElementById("export-csv-btn").onclick = ()=>{
-  const csv = buildCsv();
-  const file = new File([csv], `щоденник_${nowDate()}.csv`, {type:"text/csv"});
+  const entries = getFilteredEntries();
+  if(entries.length === 0){
+    showToast("У вибраному періоді немає записів");
+    return;
+  }
+  const csv = buildCsv(entries);
+  const file = new File([csv], `щоденник${periodSuffix()}.csv`, {type:"text/csv"});
   shareOrDownload(file, csv, "text/csv;charset=utf-8");
 };
 
 document.getElementById("export-pdf-btn").onclick = async ()=>{
-  const entries = loadEntries();
+  const entries = getFilteredEntries();
   if(entries.length === 0){
-    showToast("Немає записів для експорту");
+    showToast("У вибраному періоді немає записів");
     return;
   }
   const btn = document.getElementById("export-pdf-btn");
@@ -448,7 +541,7 @@ document.getElementById("export-pdf-btn").onclick = async ()=>{
   btn.disabled = true;
   try{
     const blob = await buildPdfBlob(entries);
-    const file = new File([blob], `щоденник_${nowDate()}.pdf`, {type:"application/pdf"});
+    const file = new File([blob], `щоденник${periodSuffix()}.pdf`, {type:"application/pdf"});
     await shareOrDownload(file, blob, "application/pdf");
   }catch(err){
     console.error(err);
@@ -475,8 +568,13 @@ async function buildPdfBlob(entries){
   wrap.style.fontFamily = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
   wrap.style.padding = "24px";
 
+  const {from, to} = getPeriodRange();
+  const periodLine = (from || to)
+    ? `Період: ${from || "початок"} — ${to || "сьогодні"}`
+    : "Період: усі записи";
+
   let html = `<h1 style="font-size:20px;margin:0 0 4px;color:#1f2937;">Щоденник думок, емоцій та поведінки</h1>
-    <p style="font-size:12px;color:#6b7280;margin:0 0 18px;">Експортовано: ${nowDate()} ${nowTime()} · Записів: ${sorted.length}</p>`;
+    <p style="font-size:12px;color:#6b7280;margin:0 0 18px;">Експортовано: ${nowDate()} ${nowTime()} · ${periodLine} · Записів: ${sorted.length}</p>`;
 
   sorted.forEach(e=>{
     html += `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
@@ -546,6 +644,8 @@ document.getElementById("force-update-link").addEventListener("click", async (e)
 // --- init ---
 resetForm();
 renderEntries();
+periodChipsInit();
+updatePeriodSummary();
 
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
