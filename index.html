@@ -88,6 +88,12 @@
     user-select:none;
   }
   .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .chip.chip-pos.active{background:#059669;border-color:#059669;}
+  .chip-group-title{
+    width:100%;font-size:12px;font-weight:600;color:var(--muted);
+    margin-top:6px;
+  }
+  .chip-group-title:first-child{margin-top:0;}
   .slider-row{display:flex;align-items:center;gap:10px;margin-top:8px;}
   input[type=range]{flex:1;}
   .slider-val{
@@ -215,7 +221,7 @@
   </section>
 
   <p class="hint no-print" style="text-align:center;margin:4px 0 16px;">
-    Версія застосунку: 2026-09-30-2 ·
+    Версія застосунку: 2026-10-10-1 ·
     <a href="#" id="force-update-link" style="color:var(--accent-dark);">оновити примусово</a>
   </p>
 
@@ -229,7 +235,9 @@
 
 <script>
 const STORAGE_KEY = "mood_diary_entries_v1";
-const EMOTION_PRESETS = ["Тривога","Гнів","Сором","Огида","Страх","Сум","Провина","Розчарування"];
+const NEGATIVE_EMOTIONS = ["Тривога","Гнів","Сором","Огида","Страх","Сум","Провина","Розчарування"];
+const POSITIVE_EMOTIONS = ["Радість","Спокій","Вдячність","Гордість","Надія","Полегшення","Захоплення","Любов"];
+const EMOTION_PRESETS = [...NEGATIVE_EMOTIONS, ...POSITIVE_EMOTIONS];
 let editingId = null;
 
 function pad(n){return n.toString().padStart(2,"0");}
@@ -255,16 +263,24 @@ function showToast(msg){
 // --- emotion chips ---
 const chipsWrap = document.getElementById("emotion-chips");
 let selectedEmotions = new Set();
-EMOTION_PRESETS.forEach(em=>{
-  const c = document.createElement("div");
-  c.className = "chip";
-  c.textContent = em;
-  c.onclick = ()=>{
-    if(selectedEmotions.has(em)){selectedEmotions.delete(em); c.classList.remove("active");}
-    else {selectedEmotions.add(em); c.classList.add("active");}
-  };
-  chipsWrap.appendChild(c);
-});
+function addEmotionGroup(title, list, extraClass){
+  const h = document.createElement("div");
+  h.className = "chip-group-title";
+  h.textContent = title;
+  chipsWrap.appendChild(h);
+  list.forEach(em=>{
+    const c = document.createElement("div");
+    c.className = "chip " + extraClass;
+    c.textContent = em;
+    c.onclick = ()=>{
+      if(selectedEmotions.has(em)){selectedEmotions.delete(em); c.classList.remove("active");}
+      else {selectedEmotions.add(em); c.classList.add("active");}
+    };
+    chipsWrap.appendChild(c);
+  });
+}
+addEmotionGroup("Складні емоції", NEGATIVE_EMOTIONS, "chip-neg");
+addEmotionGroup("Приємні емоції", POSITIVE_EMOTIONS, "chip-pos");
 
 document.getElementById("f-intensity").addEventListener("input", (e)=>{
   document.getElementById("f-intensity-val").textContent = e.target.value;
