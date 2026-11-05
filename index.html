@@ -96,6 +96,7 @@
     font-size:15px;font-weight:500;color:var(--ink);cursor:pointer;
   }
   .check-row input{width:24px;height:24px;accent-color:var(--accent);flex-shrink:0;}
+  .check-row + .check-row{margin-top:8px;}
   .alc-row{display:flex;align-items:center;gap:14px;}
   .alc-num{
     min-width:64px;text-align:center;font-size:38px;font-weight:800;line-height:1;
@@ -224,6 +225,14 @@
       <input type="checkbox" id="f-alcohol">
       <span>Цього дня вживався алкоголь</span>
     </label>
+    <label class="check-row" for="f-exercise">
+      <input type="checkbox" id="f-exercise">
+      <span>Ранкова зарядка</span>
+    </label>
+    <label class="check-row" for="f-hygiene">
+      <input type="checkbox" id="f-hygiene">
+      <span>Щоденна гігієна</span>
+    </label>
 
     <button class="btn btn-primary" id="save-btn" style="margin-top:16px;">Зберегти запис</button>
     <button class="btn btn-secondary no-print" id="cancel-edit-btn" style="margin-top:8px;display:none;">Скасувати редагування</button>
@@ -259,7 +268,7 @@
   </section>
 
   <p class="hint no-print" style="text-align:center;margin:4px 0 16px;">
-    Версія застосунку: 2026-10-11-1 ·
+    Версія застосунку: 2026-11-05-1 ·
     <a href="#" id="force-update-link" style="color:var(--accent-dark);">оновити примусово</a>
   </p>
 
@@ -335,6 +344,8 @@ function resetForm(){
   document.getElementById("f-physio").value = "";
   document.getElementById("f-behavior").value = "";
   document.getElementById("f-alcohol").checked = false;
+  document.getElementById("f-exercise").checked = false;
+  document.getElementById("f-hygiene").checked = false;
   selectedEmotions.clear();
   chipsWrap.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
   editingId = null;
@@ -351,6 +362,8 @@ function fillFormForEdit(entry){
   document.getElementById("f-physio").value = entry.physio;
   document.getElementById("f-behavior").value = entry.behavior;
   document.getElementById("f-alcohol").checked = !!entry.alcohol;
+  document.getElementById("f-exercise").checked = !!entry.exercise;
+  document.getElementById("f-hygiene").checked = !!entry.hygiene;
   document.getElementById("f-intensity").value = entry.intensity;
   document.getElementById("f-intensity-val").textContent = entry.intensity;
   selectedEmotions.clear();
@@ -382,6 +395,8 @@ document.getElementById("save-btn").onclick = ()=>{
   const physio = document.getElementById("f-physio").value.trim();
   const behavior = document.getElementById("f-behavior").value.trim();
   const alcohol = document.getElementById("f-alcohol").checked;
+  const exercise = document.getElementById("f-exercise").checked;
+  const hygiene = document.getElementById("f-hygiene").checked;
   const intensity = document.getElementById("f-intensity").value;
   const customEm = document.getElementById("f-emotions-custom").value
     .split(",").map(s=>s.trim()).filter(Boolean);
@@ -394,12 +409,12 @@ document.getElementById("save-btn").onclick = ()=>{
 
   let entries = loadEntries();
   if(editingId){
-    entries = entries.map(e=> e.id===editingId ? {...e, date,time,trigger,thoughts,emotions,intensity,physio,behavior,alcohol} : e);
+    entries = entries.map(e=> e.id===editingId ? {...e, date,time,trigger,thoughts,emotions,intensity,physio,behavior,alcohol,exercise,hygiene} : e);
     showToast("Запис оновлено");
   } else {
     entries.push({
       id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-      date,time,trigger,thoughts,emotions,intensity,physio,behavior,alcohol
+      date,time,trigger,thoughts,emotions,intensity,physio,behavior,alcohol,exercise,hygiene
     });
     showToast("Запис збережено");
   }
@@ -410,7 +425,7 @@ document.getElementById("save-btn").onclick = ()=>{
 
 let showAllEntries = false; // default: only last 7 days are rendered
 
-function entryCard(entry){
+function entryCard(entry, alcDates){
   const div = document.createElement("div");
   div.className = "entry";
   div.innerHTML = `
@@ -423,7 +438,7 @@ function entryCard(entry){
     ${entry.emotions.length ? `<div class="entry-field"><b>Емоції:</b> ${escapeHtml(entry.emotions.join(", "))}</div>` : ""}
     ${entry.physio ? `<div class="entry-field"><b>Фізіологія:</b> ${escapeHtml(entry.physio)}</div>` : ""}
     ${entry.behavior ? `<div class="entry-field"><b>Поведінка:</b> ${escapeHtml(entry.behavior)}</div>` : ""}
-    ${entry.alcohol ? `<div class="entry-field"><b>Алкоголь:</b> вживався</div>` : ""}
+    ${entryStatusRows(entry, alcDates).map(([l,v]) => `<div class="entry-field"><b>${l}:</b> ${escapeHtml(v)}</div>`).join("")}
     <div class="entry-actions no-print">
       <button class="edit" data-id="${entry.id}">✏️ Редагувати</button>
       <button class="del" data-id="${entry.id}">🗑️ Видалити</button>
@@ -472,7 +487,8 @@ function renderEntries(){
   const recent = entries.filter(e=>e.date >= cutoffStr);
   const older = entries.filter(e=>e.date < cutoffStr);
 
-  recent.forEach(entry => list.appendChild(entryCard(entry)));
+  const alcDates = alcoholDates();
+  recent.forEach(entry => list.appendChild(entryCard(entry, alcDates)));
 
   if(older.length > 0){
     const toggleBtn = document.createElement("button");
@@ -489,7 +505,7 @@ function renderEntries(){
     list.appendChild(toggleBtn);
 
     if(showAllEntries){
-      older.forEach(entry => list.appendChild(entryCard(entry)));
+      older.forEach(entry => list.appendChild(entryCard(entry, alcDates)));
     }
   }
 
@@ -550,6 +566,39 @@ function renderAlcoholBanner(){
   num.textContent = n;
   title.textContent = `${pluralDays(n)} без алкоголю`;
   sub.textContent = `Останнє вживання: ${last}`;
+}
+// All known dates of alcohol use (flagged entries + manual date), sorted ascending.
+function alcoholDates(){
+  const s = new Set();
+  const m = getManualLastAlcohol();
+  if(m) s.add(m);
+  loadEntries().forEach(e=>{ if(e.alcohol) s.add(e.date); });
+  return [...s].sort();
+}
+function dayDiff(a, b){
+  const pa = a.split("-").map(Number), pb = b.split("-").map(Number);
+  return Math.round((Date.UTC(pb[0],pb[1]-1,pb[2]) - Date.UTC(pa[0],pa[1]-1,pa[2])) / 86400000);
+}
+// Days without alcohol as of a given date (null if no earlier use is known).
+function daysWithoutAlcoholAt(dateStr, dates){
+  let last = null;
+  for(const d of dates){ if(d <= dateStr) last = d; else break; }
+  return last ? dayDiff(last, dateStr) : null;
+}
+// Extra lines under an entry (cards and PDF): habits + alcohol-free days as of that entry's date.
+// Habits are shown only for entries that have them recorded (older entries have no such field).
+function entryStatusRows(entry, dates){
+  const rows = [];
+  if(typeof entry.exercise === "boolean") rows.push(["Ранкова зарядка", entry.exercise ? "так" : "ні"]);
+  if(typeof entry.hygiene === "boolean") rows.push(["Щоденна гігієна", entry.hygiene ? "так" : "ні"]);
+  if(entry.alcohol){
+    rows.push(["Алкоголь", "вживався"]);
+  } else {
+    const n = daysWithoutAlcoholAt(entry.date, dates || alcoholDates());
+    if(n === 0) rows.push(["Алкоголь", "цього дня вживався"]);
+    else if(n !== null) rows.push(["Без алкоголю", `${n} ${pluralDays(n)}`]);
+  }
+  return rows;
 }
 // Summary used in the doctor's report (based on marks in the diary).
 function alcoholReport(filtered){
@@ -641,10 +690,14 @@ function updatePeriodSummary(){
 // --- export ---
 function buildCsv(entries){
   entries = [...entries].sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
-  const headers = ["Дата","Час","Тригерна ситуація","Думки","Емоції","Інтенсивність","Фізіологічна реакція","Поведінка","Алкоголь"];
+  const headers = ["Дата","Час","Тригерна ситуація","Думки","Емоції","Інтенсивність","Фізіологічна реакція","Поведінка","Алкоголь","Днів без алкоголю","Ранкова зарядка","Щоденна гігієна"];
   const rows = [headers];
+  const alcDates = alcoholDates();
+  const yn = v => typeof v === "boolean" ? (v ? "Так" : "Ні") : "";
   entries.forEach(e=>{
-    rows.push([e.date,e.time,e.trigger,e.thoughts,e.emotions.join("; "),e.intensity,e.physio,e.behavior,e.alcohol ? "Так" : "Ні"]);
+    const n = e.alcohol ? 0 : daysWithoutAlcoholAt(e.date, alcDates);
+    rows.push([e.date,e.time,e.trigger,e.thoughts,e.emotions.join("; "),e.intensity,e.physio,e.behavior,
+      e.alcohol ? "Так" : "Ні", n === null ? "" : n, yn(e.exercise), yn(e.hygiene)]);
   });
   const csv = rows.map(r=>r.map(cell=>{
     const s = (cell===undefined||cell===null) ? "" : String(cell);
@@ -754,6 +807,7 @@ async function buildPdfBlob(entries){
     ${alcLast}
   </div>`;
 
+  const alcDates = alcoholDates();
   sorted.forEach(e=>{
     html += `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
       <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">
@@ -764,7 +818,7 @@ async function buildPdfBlob(entries){
       ${e.emotions.length ? row("Емоції", e.emotions.join(", ")) : ""}
       ${e.physio ? row("Фізіологія", e.physio) : ""}
       ${e.behavior ? row("Поведінка", e.behavior) : ""}
-      ${e.alcohol ? row("Алкоголь", "вживався") : ""}
+      ${entryStatusRows(e, alcDates).map(([l,v]) => row(l, v)).join("")}
     </div>`;
   });
 
